@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Каталог книг — Поиск по прайс-листам</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+
+  :root {
+    --bg: #0f0e0c;
+    --surface: #181714;
+    --border: #2a2722;
+    --accent: #c9a84c;
+    --accent2: #e8c97a;
+    --text: #e8e4dc;
+    --muted: #7a7268;
+    --red: #c04a3a;
+    --green: #4a8c5c;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 300;
+    min-height: 100vh;
+  }
+
+  /* HEADER */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 32px 40px 24px;
+    display: flex;
+    align-items: flex-end;
+    gap: 32px;
+    position: relative;
+    overflow: hidden;
+  }
+  header::before {
+    content: '📚';
+    font-size: 180px;
+    position: absolute;
+    right: -20px;
+    top: -30px;
+    opacity: 0.04;
+    filter: grayscale(1);
+  }
+  .header-title { flex: 1; }
+  .header-title h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(24px, 4vw, 42px);
+    font-weight: 900;
+    line-height: 1.1;
+    color: var(--text);
+    letter-spacing: -1px;
+  }
+  .header-title h1 span { color: var(--accent); }
+  .header-subtitle {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 8px;
+    letter-spacing: 0.05em;
+  }
+  .header-badge {
+    background: var(--accent);
+    color: #0f0e0c;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    padding: 4px 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    display: inline-block;
+  }
+
+  /* TABS */
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .tab {
+    padding: 16px 32px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    user-select: none;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  /* PANELS */
+  .panel { display: none; padding: 32px 40px; }
+  .panel.active { display: block; }
+
+  /* SEARCH ROW */
+  .search-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 12px;
+    margin-bottom: 24px;
+    align-items: center;
+  }
+  .search-wrap { position: relative; }
+  .search-wrap input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px;
+    padding: 12px 16px 12px 44px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-wrap input:focus { border-color: var(--accent); }
+  .search-wrap input::placeholder { color: var(--muted); }
+  .search-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    font-size: 16px;
+  }
+  .filter-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 12px 16px;
+    outline: none;
+    cursor: pointer;
+  }
+  .count-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+    padding: 12px 0;
+  }
+  .count-badge strong { color: var(--accent); }
+
+  /* PRICELISTS TABLE */
+  .table-wrap { overflow-x: auto; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  thead tr {
+    border-bottom: 2px solid var(--accent);
+  }
+  thead th {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: left;
+    padding: 10px 16px;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  thead th:hover { color: var(--accent); }
+  thead th.sorted { color: var(--accent2); }
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+  tbody tr:hover { background: rgba(201,168,76,0.05); }
+  tbody td {
+    padding: 12px 16px;
+    vertical-align: middle;
+  }
+  .publisher-name {
+    font-weight: 500;
+    color: var(--text);
+    max-width: 340px;
+  }
+  .publisher-name .special {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    background: var(--accent);
+    color: #0f0e0c;
+    padding: 2px 6px;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .date-cell {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .date-cell.fresh { color: var(--green); }
+  .size-cell {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    text-align: right;
+    white-space: nowrap;
+  }
+  .btn-dl {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    padding: 7px 12px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .btn-dl:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .btn-parse {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: #0f0e0c;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    padding: 7px 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .btn-parse:hover { background: var(--accent2); border-color: var(--accent2); }
+  .actions-cell { display: flex; gap: 6px; }
+
+  /* BOOK SEARCH PANEL */
+  .book-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .book-panel-header h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 22px;
+    font-weight: 700;
+  }
+  .back-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .back-btn:hover { color: var(--text); border-color: var(--muted); }
+
+  /* LOADING */
+  .loading-bar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 32px;
+    text-align: center;
+  }
+  .loading-bar .spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin-bottom: 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-bar p {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* BOOK RESULTS */
+  .books-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    margin-top: 20px;
+  }
+  .book-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 16px;
+    transition: border-color 0.2s;
+  }
+  .book-card:hover { border-color: var(--accent); }
+  .book-card .book-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 6px;
+    line-height: 1.3;
+  }
+  .book-meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin-top: 8px;
+  }
+  .book-meta span { display: flex; align-items: center; gap: 4px; }
+  .book-price {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--accent);
+    margin-top: 10px;
+  }
+  .col-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+  }
+  .col-tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    background: rgba(201,168,76,0.1);
+    border: 1px solid rgba(201,168,76,0.2);
+    color: var(--accent);
+    padding: 2px 6px;
+  }
+
+  /* INFO PANEL */
+  .info-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 20px 24px;
+    margin-bottom: 24px;
+  }
+  .info-box h3 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+  .info-box p {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .info-box ul {
+    margin-top: 8px;
+    padding-left: 20px;
+  }
+  .info-box ul li {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+
+  /* EMPTY */
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+  }
+  .empty-state .icon { font-size: 48px; margin-bottom: 16px; opacity: 0.4; }
+  .empty-state p { font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+
+  /* BOOK SEARCH */
+  .book-search-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .source-info {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 8px 14px;
+    margin-bottom: 16px;
+  }
+  .source-info strong { color: var(--accent); }
+
+  /* COLUMNS SELECTOR */
+  .col-selector {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .col-selector span { color: var(--accent); }
+
+  /* ROWS COUNTER */
+  .rows-info {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+
+  /* RAW TABLE VIEW */
+  .raw-table { overflow-x: auto; max-height: 600px; overflow-y: auto; }
+  .raw-table table { min-width: 800px; }
+  .raw-table tbody td {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+
+  /* FILE UPLOAD ZONE */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    padding: 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    margin-bottom: 24px;
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); }
+  .upload-zone .upload-icon { font-size: 36px; margin-bottom: 12px; opacity: 0.5; }
+  .upload-zone p {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .upload-zone p.hint { font-size: 10px; opacity: 0.6; }
+  #file-input { display: none; }
+
+  /* FOOTER */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 20px 40px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 640px) {
+    header, .panel, footer { padding: 20px; }
+    .search-row { grid-template-columns: 1fr; }
+    .tabs .tab { padding: 14px 16px; font-size: 10px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-title">
+    <div class="header-badge">Книжный каталог</div>
+    <h1>Поиск по <span>прайс-листам</span></h1>
+    <p class="header-subtitle">Источник: transbaltik.ru · Обновлено при загрузке · ~150 поставщиков</p>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('pricelists')">📋 Прайс-листы</div>
+  <div class="tab" onclick="switchTab('book-search')">🔍 Поиск по книгам</div>
+  <div class="tab" onclick="switchTab('upload')">📁 Загрузить файл</div>
+</div>
+
+<!-- TAB 1: PRICELISTS -->
+<div class="panel active" id="tab-pricelists">
+  <div class="info-box">
+    <h3>Как пользоваться</h3>
+    <p>Найдите нужного поставщика по названию, скачайте прайс-лист или нажмите <strong style="color:var(--accent)">«Открыть»</strong> — файл загрузится и вы сможете искать по книгам прямо здесь.</p>
+  </div>
+
+  <div class="search-row">
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="pl-search" placeholder="Поиск по названию поставщика..." oninput="filterPricelists()">
+    </div>
+    <select class="filter-select" id="pl-sort" onchange="filterPricelists()">
+      <option value="name">По алфавиту</option>
+      <option value="date">По дате</option>
+      <option value="size">По размеру</option>
+    </select>
+    <div class="count-badge">Найдено: <strong id="pl-count">0</strong></div>
+  </div>
+
+  <div class="table-wrap">
+    <table id="pl-table">
+      <thead>
+        <tr>
+          <th onclick="sortPricelists('name')">Поставщик / Издательство</th>
+          <th onclick="sortPricelists('date')">Обновлено</th>
+          <th onclick="sortPricelists('size')">Размер</th>
+          <th>Формат</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody id="pl-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- TAB 2: BOOK SEARCH -->
+<div class="panel" id="tab-book-search">
+  <div id="book-search-empty" class="empty-state">
+    <div class="icon">📖</div>
+    <p>Откройте прайс-лист на вкладке «Прайс-листы»,<br>чтобы искать по книгам</p>
+    <br>
+    <button class="btn-parse" onclick="switchTab('pricelists')">← К прайс-листам</button>
+  </div>
+  <div id="book-search-ui" style="display:none">
+    <div class="book-panel-header">
+      <button class="back-btn" onclick="switchTab('pricelists')">← Назад</button>
+      <h2 id="bs-title">Поиск</h2>
+    </div>
+    <div class="source-info" id="bs-source"></div>
+    <div class="book-search-row">
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="bs-query" placeholder="Введите название, автора, ISBN или серию..." oninput="searchBooks()">
+      </div>
+      <select class="filter-select" id="bs-col-filter" onchange="searchBooks()">
+        <option value="">Все столбцы</option>
+      </select>
+    </div>
+    <div class="rows-info" id="bs-rows-info"></div>
+    <div id="bs-results"></div>
+  </div>
+</div>
+
+<!-- TAB 3: FILE UPLOAD -->
+<div class="panel" id="tab-upload">
+  <div class="info-box">
+    <h3>Загрузка своего файла</h3>
+    <p>Скачайте прайс-лист с сайта поставщика и загрузите его сюда для поиска. Поддерживаются форматы <strong style="color:var(--text)">.xlsx</strong> и <strong style="color:var(--text)">.xls</strong>.</p>
+    <ul>
+      <li>Файл обрабатывается локально — никуда не отправляется</li>
+      <li>После загрузки вы перейдёте на вкладку «Поиск по книгам»</li>
+    </ul>
+  </div>
+
+  <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()"
+    ondragover="event.preventDefault();this.classList.add('drag')"
+    ondragleave="this.classList.remove('drag')"
+    ondrop="handleDrop(event)">
+    <div class="upload-icon">📂</div>
+    <p>Нажмите или перетащите файл сюда</p>
+    <p class="hint">Поддерживаются .xlsx и .xls · Файл не покидает ваш браузер</p>
+  </div>
+  <input type="file" id="file-input" accept=".xlsx,.xls" onchange="handleFileInput(event)">
+  <div id="upload-loading" style="display:none" class="loading-bar">
+    <div class="spinner"></div>
+    <p>Обрабатываем файл...</p>
+  </div>
+</div>
+
+<footer>
+  <span>Данные: <a href="https://www.transbaltik.ru/pricelists" target="_blank">transbaltik.ru/pricelists</a></span>
+  <span>Файлы обрабатываются локально, в браузере</span>
+</footer>
+
+<script>
+// ============================================================
+// DATA — price list catalog parsed from transbaltik.ru
+// ============================================================
+const PRICELISTS = [
+  {name:"! Mnogoknig Games (Рига, склад)",url:"https://www.transbaltik.ru/uploads/pricelists/mnogokniggames260526.xlsx",date:"2026-05-26",size:"26.09KB",special:true},
+  {name:"! Айрис-пресс (Готовимся к школе 2026) акция",url:"https://www.transbaltik.ru/uploads/pricelists/airisakc250526.xls",date:"2026-05-25",size:"763KB",special:true},
+  {name:"! Буква-Ленд акция 01.06–30.06.2026",url:"https://www.transbaltik.ru/uploads/pricelists/bukvalendspec280526.xlsx",date:"2026-05-28",size:"2.92MB",special:true},
+  {name:"! Буква-Ленд май 2026",url:"https://www.transbaltik.ru/uploads/pricelists/bukvalendskidka040526.xlsx",date:"2026-05-04",size:"7.24MB",special:true},
+  {name:"! Эксклюзив (Рига, склад)",url:"https://www.transbaltik.ru/uploads/pricelists/dzirnieku2605.xls",date:"2026-05-26",size:"7.79MB",special:true},
+  {name:"4GAMES",url:"https://www.transbaltik.ru/uploads/pricelists/4games050526.xlsx",date:"2026-05-05",size:"23.49KB"},
+  {name:"Abumba игрушки 1",url:"https://www.transbaltik.ru/uploads/pricelists/abumbaigrushkichast1040526.xlsx",date:"2026-05-04",size:"5.58MB"},
+  {name:"Abumba игрушки 2",url:"https://www.transbaltik.ru/uploads/pricelists/abumbaigrushkichast2040526.xlsx",date:"2026-05-04",size:"2.04MB"},
+  {name:"Abumba книги",url:"https://www.transbaltik.ru/uploads/pricelists/abumbaknigi040526.xlsx",date:"2026-05-04",size:"1.17MB"},
+  {name:"Abumba конструкторы",url:"https://www.transbaltik.ru/uploads/pricelists/abumbakonstruktor040526.xlsx",date:"2026-05-04",size:"346.99KB"},
+  {name:"Abumba пазлы",url:"https://www.transbaltik.ru/uploads/pricelists/abumbapuzzli040526.xlsx",date:"2026-05-04",size:"905.69KB"},
+  {name:"Berttoys",url:"https://www.transbaltik.ru/uploads/pricelists/bert040526.xlsx",date:"2026-05-04",size:"9.59MB"},
+  {name:"Bubble",url:"https://www.transbaltik.ru/uploads/pricelists/bubble180526.xlsx",date:"2026-05-18",size:"324.26KB"},
+  {name:"Cho Cho Games",url:"https://www.transbaltik.ru/uploads/pricelists/chochogames050526.xlsx",date:"2026-05-05",size:"6.02MB"},
+  {name:"Crowd Games",url:"https://www.transbaltik.ru/uploads/pricelists/crowdgames040526.xlsx",date:"2026-05-04",size:"30.71KB"},
+  {name:"DoJoy",url:"https://www.transbaltik.ru/uploads/pricelists/dojoy110526.xlsx",date:"2026-05-11",size:"1.64MB"},
+  {name:"GaGa Games",url:"https://www.transbaltik.ru/uploads/pricelists/gaga250526.xlsx",date:"2026-05-25",size:"42.90KB"},
+  {name:"KRAAV",url:"https://www.transbaltik.ru/uploads/pricelists/kraav120526.xlsx",date:"2026-05-12",size:"1.76MB"},
+  {name:"MACards",url:"https://www.transbaltik.ru/uploads/pricelists/macards040526.xlsx",date:"2026-05-04",size:"54.71KB"},
+  {name:"Magic kniga",url:"https://www.transbaltik.ru/uploads/pricelists/magic200526.xls",date:"2026-05-20",size:"1011KB"},
+  {name:"ND Play игры",url:"https://www.transbaltik.ru/uploads/pricelists/ndplayigri110526.xlsx",date:"2026-05-11",size:"513.47KB"},
+  {name:"ND Play книги",url:"https://www.transbaltik.ru/uploads/pricelists/ndplayknigi110526.xlsx",date:"2026-05-11",size:"15.17MB"},
+  {name:"ND Play стикеры",url:"https://www.transbaltik.ru/uploads/pricelists/ndplaystickers110526.xlsx",date:"2026-05-11",size:"1.62MB"},
+  {name:"New Making Studio",url:"https://www.transbaltik.ru/uploads/pricelists/newmakingstudio180526.xlsx",date:"2026-05-18",size:"11.69KB"},
+  {name:"Rabbits and Books",url:"https://www.transbaltik.ru/uploads/pricelists/rabbitandbooks280526.xlsx",date:"2026-05-28",size:"18.90MB"},
+  {name:"Rollin Games",url:"https://www.transbaltik.ru/uploads/pricelists/rollingames050526.xlsx",date:"2026-05-05",size:"15.88KB"},
+  {name:"Zubro Games",url:"https://www.transbaltik.ru/uploads/pricelists/zubrogames180526.xlsx",date:"2026-05-18",size:"14.99MB"},
+  {name:"Абрикос",url:"https://www.transbaltik.ru/uploads/pricelists/abrikobuks040526.xlsx",date:"2026-05-04",size:"109.15KB"},
+  {name:"Абрис / Учторг",url:"https://www.transbaltik.ru/uploads/pricelists/abris210526.xlsx",date:"2026-05-21",size:"3.60MB"},
+  {name:"Аввалон",url:"https://www.transbaltik.ru/uploads/pricelists/avvalon040526.xls",date:"2026-05-04",size:"395KB"},
+  {name:"Ад Маргинем",url:"https://www.transbaltik.ru/uploads/pricelists/ad-marginem250526.xls",date:"2026-05-25",size:"735.50KB"},
+  {name:"Азбука-Аттикус",url:"https://www.transbaltik.ru/uploads/pricelists/azbuka280526.xlsx",date:"2026-05-28",size:"1.09MB"},
+  {name:"Азбука-Аттикус новинки",url:"https://www.transbaltik.ru/uploads/pricelists/azbukanov270526.xlsx",date:"2026-05-27",size:"1.77MB"},
+  {name:"Азбукварик",url:"https://www.transbaltik.ru/uploads/pricelists/azbookvarik070526.xlsx",date:"2026-05-07",size:"6.68MB"},
+  {name:"Айрис-пресс",url:"https://www.transbaltik.ru/uploads/pricelists/airis250526.xls",date:"2026-05-25",size:"1.78MB"},
+  {name:"Академический проект",url:"https://www.transbaltik.ru/uploads/pricelists/akad290526.xls",date:"2026-05-29",size:"224KB"},
+  {name:"Аквилегия-М",url:"https://www.transbaltik.ru/uploads/pricelists/akvilegija040526.xls",date:"2026-05-04",size:"136KB"},
+  {name:"Альбус Корвус (Белая ворона)",url:"https://www.transbaltik.ru/uploads/pricelists/albus070526.xlsx",date:"2026-05-07",size:"55.67KB"},
+  {name:"Альма Матер",url:"https://www.transbaltik.ru/uploads/pricelists/almamater260526.xlsx",date:"2026-05-26",size:"89.52KB"},
+  {name:"Альпака (комиксы)",url:"https://www.transbaltik.ru/uploads/pricelists/alpakachast040526.xlsx",date:"2026-05-04",size:"275.82KB"},
+  {name:"Альпина",url:"https://www.transbaltik.ru/uploads/pricelists/alpina270526.xlsx",date:"2026-05-27",size:"894.24KB"},
+  {name:"Амрита",url:"https://www.transbaltik.ru/uploads/pricelists/amrita250526.xls",date:"2026-05-25",size:"3.77MB"},
+  {name:"Антология",url:"https://www.transbaltik.ru/uploads/pricelists/antologija200526.xls",date:"2026-05-20",size:"288KB"},
+  {name:"АРТКЛАССИКА",url:"https://www.transbaltik.ru/uploads/pricelists/artklassika050526.xls",date:"2026-05-05",size:"1.39MB"},
+  {name:"Архипелаг",url:"https://www.transbaltik.ru/uploads/pricelists/arhipelag290526.xlsx",date:"2026-05-29",size:"35.86MB"},
+  {name:"Аспект Пресс",url:"https://www.transbaltik.ru/uploads/pricelists/aspekt060526.xlsx",date:"2026-05-06",size:"149.27KB"},
+  {name:"АСТ",url:"https://www.transbaltik.ru/uploads/pricelists/ast290526.xlsx",date:"2026-05-29",size:"14.20MB"},
+  {name:"Аст-Пресс",url:"https://www.transbaltik.ru/uploads/pricelists/astpress210526.xls",date:"2026-05-21",size:"3.19MB"},
+  {name:"Атберг",url:"https://www.transbaltik.ru/uploads/pricelists/atberg220526.xls",date:"2026-05-22",size:"404KB"},
+  {name:"Аякс-Пресс",url:"https://www.transbaltik.ru/uploads/pricelists/ayax040526.xlsx",date:"2026-05-04",size:"104.25KB"},
+  {name:"Белый город",url:"https://www.transbaltik.ru/uploads/pricelists/belijgorod040526.xls",date:"2026-05-04",size:"694KB"},
+  {name:"Белый Единорог",url:"https://www.transbaltik.ru/uploads/pricelists/belijedinorog040526.xls",date:"2026-05-04",size:"48KB"},
+  {name:"Библия для всех",url:"https://www.transbaltik.ru/uploads/pricelists/biblijadljavsex290526.xlsx",date:"2026-05-29",size:"503.53KB"},
+  {name:"Бимбимон",url:"https://www.transbaltik.ru/uploads/pricelists/bimbimon060526.xls",date:"2026-05-06",size:"12.37MB"},
+  {name:"Благовест",url:"https://www.transbaltik.ru/uploads/pricelists/blagovest040526.xlsx",date:"2026-05-04",size:"3.52MB"},
+  {name:"Бондибон",url:"https://www.transbaltik.ru/uploads/pricelists/bondibon120526.xlsx",date:"2026-05-12",size:"13.53MB"},
+  {name:"Буква-Ленд (Сима-ленд)",url:"https://www.transbaltik.ru/uploads/pricelists/bukvalend200526.xlsx",date:"2026-05-20",size:"32.97MB"},
+  {name:"Букмастер",url:"https://www.transbaltik.ru/uploads/pricelists/bukmaster250526.xls",date:"2026-05-25",size:"2.54MB"},
+  {name:"Бумба",url:"https://www.transbaltik.ru/uploads/pricelists/bumba040526.xlsx",date:"2026-05-04",size:"4.20MB"},
+  {name:"Бумбарам",url:"https://www.transbaltik.ru/uploads/pricelists/bumbaram220526.xls",date:"2026-05-22",size:"1.61MB"},
+  {name:"Велигор",url:"https://www.transbaltik.ru/uploads/pricelists/veligor040526.xls",date:"2026-05-04",size:"1.62MB"},
+  {name:"Весь",url:"https://www.transbaltik.ru/uploads/pricelists/vesj250526.xls",date:"2026-05-25",size:"316KB"},
+  {name:"Вече",url:"https://www.transbaltik.ru/uploads/pricelists/veche260526.xlsx",date:"2026-05-26",size:"196.68KB"},
+  {name:"Вече новинки",url:"https://www.transbaltik.ru/uploads/pricelists/vechenov260526.xlsx",date:"2026-05-26",size:"218.07KB"},
+  {name:"Вита Нова",url:"https://www.transbaltik.ru/uploads/pricelists/vitanova040526.xls",date:"2026-05-04",size:"188.50KB"},
+  {name:"Вита-Пресс",url:"https://www.transbaltik.ru/uploads/pricelists/vitapress040526.xls",date:"2026-05-04",size:"245KB"},
+  {name:"Войсбук",url:"https://www.transbaltik.ru/uploads/pricelists/voice070526.xlsx",date:"2026-05-07",size:"9.12MB"},
+  {name:"Вольный странник",url:"https://www.transbaltik.ru/uploads/pricelists/volnij290526.xlsx",date:"2026-05-29",size:"10.79MB"},
+  {name:"Время",url:"https://www.transbaltik.ru/uploads/pricelists/vremja210526.xls",date:"2026-05-21",size:"164.50KB"},
+  {name:"Вундеркинд с пелёнок",url:"https://www.transbaltik.ru/uploads/pricelists/vunderking060526.xls",date:"2026-05-06",size:"311KB"},
+  {name:"Галактика",url:"https://www.transbaltik.ru/uploads/pricelists/galaktika250526.xls",date:"2026-05-25",size:"489KB"},
+  {name:"Ганга",url:"https://www.transbaltik.ru/uploads/pricelists/ganga180526.xls",date:"2026-05-18",size:"296.50KB"},
+  {name:"Гаятри (Livebook)",url:"https://www.transbaltik.ru/uploads/pricelists/livebook260526.xlsx",date:"2026-05-26",size:"91.95KB"},
+  {name:"Гелий",url:"https://www.transbaltik.ru/uploads/pricelists/gelij190526.xls",date:"2026-05-19",size:"679KB"},
+  {name:"Генезис",url:"https://www.transbaltik.ru/uploads/pricelists/genezis250526.xlsx",date:"2026-05-25",size:"67.76KB"},
+  {name:"Геодом",url:"https://www.transbaltik.ru/uploads/pricelists/geodom250526.xlsx",date:"2026-05-25",size:"7.58MB"},
+  {name:"Гнозис",url:"https://www.transbaltik.ru/uploads/pricelists/gnozis250526.xlsx",date:"2026-05-25",size:"696.40KB"},
+  {name:"Гном",url:"https://www.transbaltik.ru/uploads/pricelists/gnom050526.xls",date:"2026-05-05",size:"288KB"},
+  {name:"Городец",url:"https://www.transbaltik.ru/uploads/pricelists/gorodec290526.XLSX",date:"2026-05-29",size:"11.86MB"},
+  {name:"Гранд Фаир",url:"https://www.transbaltik.ru/uploads/pricelists/grand080526.xlsx",date:"2026-05-08",size:"81.76KB"},
+  {name:"Гудвин",url:"https://www.transbaltik.ru/uploads/pricelists/gudvin290526.xlsx",date:"2026-05-29",size:"48.94KB"},
+  {name:"Деловая книга",url:"https://www.transbaltik.ru/uploads/pricelists/delovajakniga250526.xls",date:"2026-05-25",size:"204KB"},
+  {name:"Десятое королевство (Игры)",url:"https://www.transbaltik.ru/uploads/pricelists/korolevstvo040526.xlsx",date:"2026-05-04",size:"8.76MB"},
+  {name:"Детская и юношеская книга",url:"https://www.transbaltik.ru/uploads/pricelists/detskajaijunosheskaja050526.xlsx",date:"2026-05-05",size:"94.56KB"},
+  {name:"Детская литература",url:"https://www.transbaltik.ru/uploads/pricelists/detlit180526.xls",date:"2026-05-18",size:"993KB"},
+  {name:"Диля",url:"https://www.transbaltik.ru/uploads/pricelists/dilja060526.xls",date:"2026-05-06",size:"508KB"},
+  {name:"Директ медиа",url:"https://www.transbaltik.ru/uploads/pricelists/direct040526.xlsx",date:"2026-05-04",size:"3.23MB"},
+  {name:"Добрая книга",url:"https://www.transbaltik.ru/uploads/pricelists/dobrajakniga040526.xlsx",date:"2026-05-04",size:"51.12KB"},
+  {name:"Дэвар медиа",url:"https://www.transbaltik.ru/uploads/pricelists/devar180526.xlsx",date:"2026-05-18",size:"5.66MB"},
+  {name:"Живой язык",url:"https://www.transbaltik.ru/uploads/pricelists/zhivojjazik140526.xlsx",date:"2026-05-14",size:"101.12KB"},
+  {name:"Звезда",url:"https://www.transbaltik.ru/uploads/pricelists/zvezda280526.xls",date:"2026-05-28",size:"809.50KB"},
+  {name:"Зиренко ИП (Мемограм)",url:"https://www.transbaltik.ru/uploads/pricelists/memogram260526.xlsx",date:"2026-05-26",size:"787.11KB"},
+  {name:"Златоуст",url:"https://www.transbaltik.ru/uploads/pricelists/zlatoust270526.xlsx",date:"2026-05-27",size:"5.98MB"},
+  {name:"Игры от Вики Дмитриевой (ИП КИРЬЯНОВА)",url:"https://www.transbaltik.ru/uploads/pricelists/vikamirtijeva040526.xlsx",date:"2026-05-04",size:"10.82KB"},
+  {name:"Изд. Елены Терещенковой",url:"https://www.transbaltik.ru/uploads/pricelists/tereshnkova-260526.xlsx",date:"2026-05-26",size:"10.07KB"},
+  {name:"Изд. Ивана Лимбаха",url:"https://www.transbaltik.ru/uploads/pricelists/ilimbaha180526.xlsx",date:"2026-05-19",size:"128.99KB"},
+  {name:"Издательский Дом Мещерякова",url:"https://www.transbaltik.ru/uploads/pricelists/izdmesh260526.xlsx",date:"2026-05-26",size:"3.56MB"},
+  {name:"Издательство Института Гайдара",url:"https://www.transbaltik.ru/uploads/pricelists/gaidar190526.xlsx",date:"2026-05-19",size:"96.22KB"},
+  {name:"ИП Зюзин",url:"https://www.transbaltik.ru/uploads/pricelists/zuzin200526.xls",date:"2026-05-20",size:"6.06MB"},
+  {name:"Истари комикс",url:"https://www.transbaltik.ru/uploads/pricelists/istari290526.xlsx",date:"2026-05-29",size:"338.88KB"},
+  {name:"Канон+",url:"https://www.transbaltik.ru/uploads/pricelists/kanon140526.xlsx",date:"2026-05-14",size:"106.13KB"},
+  {name:"Каро",url:"https://www.transbaltik.ru/uploads/pricelists/karo150526.xls",date:"2026-05-15",size:"1.20MB"},
+  {name:"Карьера Пресс",url:"https://www.transbaltik.ru/uploads/pricelists/karjerapress120426.xlsx",date:"2026-05-12",size:"212.74KB"},
+  {name:"Клевер",url:"https://www.transbaltik.ru/uploads/pricelists/klever250526.xlsx",date:"2026-05-29",size:"232.33KB"},
+  {name:"Клевер Хобби",url:"https://www.transbaltik.ru/uploads/pricelists/kleverhobby040526.xls",date:"2026-05-04",size:"18.50MB"},
+  {name:"Книжники",url:"https://www.transbaltik.ru/uploads/pricelists/knizhnik130526.xlsx",date:"2026-05-13",size:"418.13KB"},
+  {name:"Книжный дом А. Орловой",url:"https://www.transbaltik.ru/uploads/pricelists/orlova040526.xlsx",date:"2026-05-04",size:"1.61MB"},
+  {name:"Книжный клуб 36.6",url:"https://www.transbaltik.ru/uploads/pricelists/knkl366-290526.xls",date:"2026-05-29",size:"21.48MB"},
+  {name:"Комиксы оптом",url:"https://www.transbaltik.ru/uploads/pricelists/komiksoptom270526.xls",date:"2026-05-27",size:"2.85MB"},
+  {name:"КомпасГид",url:"https://www.transbaltik.ru/uploads/pricelists/kompasgid180526.xlsx",date:"2026-05-18",size:"231.57KB"},
+  {name:"Комсомольская правда",url:"https://www.transbaltik.ru/uploads/pricelists/komsovolskaja180526.xls",date:"2026-05-18",size:"326.50KB"},
+  {name:"Контэнт",url:"https://www.transbaltik.ru/uploads/pricelists/kontent280526.xlsx",date:"2026-05-28",size:"14.02MB"},
+  {name:"Концептуал",url:"https://www.transbaltik.ru/uploads/pricelists/konzeptual290526.xls",date:"2026-05-29",size:"515.50KB"},
+  {name:"Космодром",url:"https://www.transbaltik.ru/uploads/pricelists/kosmodrom040526.xlsx",date:"2026-05-04",size:"140.55KB"},
+  {name:"Кучково Поле Музеон",url:"https://www.transbaltik.ru/uploads/pricelists/kuchkovopolemuzeon150526.xlsx",date:"2026-05-15",size:"166.04KB"},
+  {name:"Лабиринт",url:"https://www.transbaltik.ru/uploads/pricelists/labirint250526.xls",date:"2026-05-25",size:"5.75MB"},
+  {name:"Лабиринт Новинки",url:"https://www.transbaltik.ru/uploads/pricelists/labirintnov250526.xls",date:"2026-05-25",size:"91KB"},
+  {name:"Лабиринт Эксклюзив",url:"https://www.transbaltik.ru/uploads/pricelists/labirintekskl250526.xls",date:"2026-05-25",size:"1.36MB"},
+  {name:"Лаборатория знаний",url:"https://www.transbaltik.ru/uploads/pricelists/laboratorijaznanij040526.xls",date:"2026-05-04",size:"278KB"},
+  {name:"Лавка игр",url:"https://www.transbaltik.ru/uploads/pricelists/lavkaigr180526.xls",date:"2026-05-18",size:"83KB"},
+  {name:"Ламинария",url:"https://www.transbaltik.ru/uploads/pricelists/laminarija070526.xls",date:"2026-05-07",size:"206KB"},
+  {name:"Лас играс (Сима-ленд)",url:"https://www.transbaltik.ru/uploads/pricelists/lasigras040526.xlsx",date:"2026-05-04",size:"2.51MB"},
+  {name:"Легион Автодата",url:"https://www.transbaltik.ru/uploads/pricelists/legion040526.xls",date:"2026-05-04",size:"1.01MB"},
+  {name:"Лига партизан (настольные игры)",url:"https://www.transbaltik.ru/uploads/pricelists/ligapartizan290526.xlsx",date:"2026-05-29",size:"204.07KB"},
+  {name:"Лимонад",url:"https://www.transbaltik.ru/uploads/pricelists/limonad250526.xlsx",date:"2026-05-25",size:"21.76KB"},
+  {name:"ЛИНГВО-БУК",url:"https://www.transbaltik.ru/uploads/pricelists/lingvobook120526.xls",date:"2026-05-12",size:"1.22MB"},
+  {name:"Литур",url:"https://www.transbaltik.ru/uploads/pricelists/litur050526.xls",date:"2026-05-05",size:"1000.50KB"},
+  {name:"Лорета",url:"https://www.transbaltik.ru/uploads/pricelists/loreta040526.xlsx",date:"2026-05-04",size:"12.18KB"},
+  {name:"М-Парк",url:"https://www.transbaltik.ru/uploads/pricelists/mpark040526.xlsx",date:"2026-05-04",size:"4.70MB"},
+  {name:"Маламалама (Аль Пако)",url:"https://www.transbaltik.ru/uploads/pricelists/malamalama250526.xlsx",date:"2026-05-25",size:"6.13MB"},
+  {name:"Маленький гений",url:"https://www.transbaltik.ru/uploads/pricelists/malenkijgenij210526.xls",date:"2026-05-21",size:"511.50KB"},
+  {name:"Машины творения",url:"https://www.transbaltik.ru/uploads/pricelists/mashinitvorenia050526.xlsx",date:"2026-05-05",size:"17.61KB"},
+  {name:"Мелик-Пашаев",url:"https://www.transbaltik.ru/uploads/pricelists/melikpashaev180526.xlsx",date:"2026-05-18",size:"89.66KB"},
+  {name:"Мир Урании",url:"https://www.transbaltik.ru/uploads/pricelists/mirurania050526.xls",date:"2026-05-05",size:"93.50KB"},
+  {name:"Мир Хобби",url:"https://www.transbaltik.ru/uploads/pricelists/hobbyworld290526.xls",date:"2026-05-29",size:"11.08MB"},
+  {name:"МИФ",url:"https://www.transbaltik.ru/uploads/pricelists/mif290526.xlsx",date:"2026-05-29",size:"643.64KB"},
+  {name:"Мозайка-Синтез",url:"https://www.transbaltik.ru/uploads/pricelists/mozaika150526.xlsx",date:"2026-05-15",size:"8.69MB"},
+  {name:"Молодая гвардия",url:"https://www.transbaltik.ru/uploads/pricelists/molgvardija050526.xls",date:"2026-05-05",size:"367.50KB"},
+  {name:"Настя и Никита",url:"https://www.transbaltik.ru/uploads/pricelists/nastjainikita260526.xlsx",date:"2026-05-26",size:"3.80MB"},
+  {name:"Наука",url:"https://www.transbaltik.ru/uploads/pricelists/nauka200526.xls",date:"2026-05-20",size:"373.50KB"},
+  {name:"Нескучные игры",url:"https://www.transbaltik.ru/uploads/pricelists/neskuchnie050526.xls",date:"2026-05-05",size:"12.99MB"},
+  {name:"Нигма",url:"https://www.transbaltik.ru/uploads/pricelists/nigma220526.xls",date:"2026-05-22",size:"948.50KB"},
+  {name:"Никея",url:"https://www.transbaltik.ru/uploads/pricelists/nikea050526.xls",date:"2026-05-05",size:"5.77MB"},
+  {name:"НЛО",url:"https://www.transbaltik.ru/uploads/pricelists/nlo050526.xls",date:"2026-05-05",size:"389.50KB"},
+  {name:"Образовательный проект",url:"https://www.transbaltik.ru/uploads/pricelists/obraz250526.xls",date:"2026-05-25",size:"7.89MB"},
+  {name:"Образовательный проект (Вако)",url:"https://www.transbaltik.ru/uploads/pricelists/vako250526.xls",date:"2026-05-25",size:"1.13MB"},
+  {name:"Образовательный проект (Вакоша)",url:"https://www.transbaltik.ru/uploads/pricelists/vakosha250526.xls",date:"2026-05-25",size:"515.50KB"},
+  {name:"Олма",url:"https://www.transbaltik.ru/uploads/pricelists/olma140526.xlsx",date:"2026-05-14",size:"1.31MB"},
+  {name:"Омега книги",url:"https://www.transbaltik.ru/uploads/pricelists/omegaknig040526.xlsx",date:"2026-05-04",size:"7.51MB"},
+  {name:"Открытая книга (Октопус)",url:"https://www.transbaltik.ru/uploads/pricelists/otkritaja070526.xlsx",date:"2026-05-07",size:"19.26MB"},
+  {name:"Пешком в историю",url:"https://www.transbaltik.ru/uploads/pricelists/peshkomvistoriju270526.xlsx",date:"2026-05-27",size:"84.24KB"},
+  {name:"ПИТЕР",url:"https://www.transbaltik.ru/uploads/pricelists/piter290526.xlsx",date:"2026-05-29",size:"275.15KB"},
+  {name:"Подписные издания",url:"https://www.transbaltik.ru/uploads/pricelists/podpisnie190526.xlsx",date:"2026-05-19",size:"5.86MB"},
+  {name:"Поляндрия",url:"https://www.transbaltik.ru/uploads/pricelists/polyandrija060526.xls",date:"2026-05-06",size:"1.50MB"},
+  {name:"Попурри",url:"https://www.transbaltik.ru/uploads/pricelists/popuri290526.xls",date:"2026-05-29",size:"1.57MB"},
+  {name:"Проф-Пресс",url:"https://www.transbaltik.ru/uploads/pricelists/profpress050526.xls",date:"2026-05-05",size:"41.60MB"},
+  {name:"Проф-Пресс книги",url:"https://www.transbaltik.ru/uploads/pricelists/profpresskn180526.xls",date:"2026-05-18",size:"10.16MB"},
+  {name:"Развитие",url:"https://www.transbaltik.ru/uploads/pricelists/razvitie290526.xls",date:"2026-05-29",size:"11.67MB"},
+  {name:"Редкая птица",url:"https://www.transbaltik.ru/uploads/pricelists/redkajaptica250526.xlsx",date:"2026-05-25",size:"6.74MB"},
+  {name:"Речь",url:"https://www.transbaltik.ru/uploads/pricelists/rech080526.xls",date:"2026-05-08",size:"266.50KB"},
+  {name:"Рипол",url:"https://www.transbaltik.ru/uploads/pricelists/ripol250526.xlsx",date:"2026-05-25",size:"301.58KB"},
+  {name:"Розовый жираф",url:"https://www.transbaltik.ru/uploads/pricelists/rozovijzhiraf250526.xlsx",date:"2026-05-25",size:"91.88KB"},
+  {name:"Росмэн",url:"https://www.transbaltik.ru/uploads/pricelists/rosmen280526.xlsx",date:"2026-05-28",size:"12.47MB"},
+  {name:"Роузбад",url:"https://www.transbaltik.ru/uploads/pricelists/rouzbad250526.xlsx",date:"2026-05-25",size:"11.66KB"},
+  {name:"Русский язык",url:"https://www.transbaltik.ru/uploads/pricelists/russjaz210526.xls",date:"2026-05-21",size:"225KB"},
+  {name:"Саттва",url:"https://www.transbaltik.ru/uploads/pricelists/sattva050526.xls",date:"2026-05-05",size:"223KB"},
+  {name:"Сеанс",url:"https://www.transbaltik.ru/uploads/pricelists/seans220526.xlsx",date:"2026-05-22",size:"61.23KB"},
+  {name:"СЗКЭО",url:"https://www.transbaltik.ru/uploads/pricelists/szkeo250526.xls",date:"2026-05-25",size:"1.14MB"},
+  {name:"Сильвертойз (Котеин)",url:"https://www.transbaltik.ru/uploads/pricelists/silver260526.xls",date:"2026-05-26",size:"4.45MB"},
+  {name:"Симбат (Умка) книги",url:"https://www.transbaltik.ru/uploads/pricelists/simbakn130526.xlsx",date:"2026-05-13",size:"23.03MB"},
+  {name:"Синдбад",url:"https://www.transbaltik.ru/uploads/pricelists/sindbad290526.xlsx",date:"2026-05-29",size:"134.01KB"},
+  {name:"Слово",url:"https://www.transbaltik.ru/uploads/pricelists/slovo220526.xlsx",date:"2026-05-22",size:"9.04MB"},
+  {name:"Сорок книг (40 книг)",url:"https://www.transbaltik.ru/uploads/pricelists/40knig200525.xlsx",date:"2026-05-20",size:"258.89KB"},
+  {name:"Стрекоза",url:"https://www.transbaltik.ru/uploads/pricelists/strekoza280526.xls",date:"2026-05-28",size:"1.70MB"},
+  {name:"Тандем",url:"https://www.transbaltik.ru/uploads/pricelists/tandem060526.xls",date:"2026-05-06",size:"13.72MB"},
+  {name:"Терминал-книга (изд. ВММ)",url:"https://www.transbaltik.ru/uploads/pricelists/terminal290526.xls",date:"2026-05-29",size:"27.16MB"},
+  {name:"Торговый дом ИКС (BHV)",url:"https://www.transbaltik.ru/uploads/pricelists/bhv290526.xls",date:"2026-05-29",size:"893KB"},
+  {name:"Умница",url:"https://www.transbaltik.ru/uploads/pricelists/umnica290526.xls",date:"2026-05-29",size:"104.50KB"},
+  {name:"Фабрика игр",url:"https://www.transbaltik.ru/uploads/pricelists/fabrikaigr290526.xlsx",date:"2026-05-29",size:"393.56KB"},
+  {name:"Фантом Пресс",url:"https://www.transbaltik.ru/uploads/pricelists/fantom280526.xls",date:"2026-05-28",size:"562.50KB"},
+  {name:"Феникс+",url:"https://www.transbaltik.ru/uploads/pricelists/feniksplus290526.xlsx",date:"2026-05-29",size:"1.23MB"},
+  {name:"Феникс ТД",url:"https://www.transbaltik.ru/uploads/pricelists/fenikstd070526.xls",date:"2026-05-07",size:"3.92MB"},
+  {name:"Феникс-Премьер",url:"https://www.transbaltik.ru/uploads/pricelists/fenikspremjer260526.xls",date:"2026-05-26",size:"7.09MB"},
+  {name:"Фламинго",url:"https://www.transbaltik.ru/uploads/pricelists/flamingo250526.xlsx",date:"2026-05-25",size:"19.94MB"},
+  {name:"Хатбер-пресс",url:"https://www.transbaltik.ru/uploads/pricelists/hatberpress250526.xls",date:"2026-05-25",size:"144.50KB"},
+  {name:"Центрполиграф",url:"https://www.transbaltik.ru/uploads/pricelists/cnpol050526.xls",date:"2026-05-05",size:"5.50MB"},
+  {name:"Шанс",url:"https://www.transbaltik.ru/uploads/pricelists/shans050526.xlsx",date:"2026-05-05",size:"27.03MB"},
+  {name:"Эврикус",url:"https://www.transbaltik.ru/uploads/pricelists/evrikus210526.xls",date:"2026-05-21",size:"4.88MB"},
+  {name:"Эксмо",url:"https://www.transbaltik.ru/uploads/pricelists/eksmo290526.xls",date:"2026-05-29",size:"46.75MB"},
+  {name:"Эксмо Новинки 01–05.06.2026",url:"https://www.transbaltik.ru/uploads/pricelists/eksmonov290526.xlsx",date:"2026-05-29",size:"60.53KB",special:true},
+  {name:"Эксмо Спб (СЗКО)",url:"https://www.transbaltik.ru/uploads/pricelists/szko260526.xls",date:"2026-05-26",size:"36.10MB"},
+  {name:"Энас",url:"https://www.transbaltik.ru/uploads/pricelists/enas050526.xlsx",date:"2026-05-05",size:"190.89KB"},
+  {name:"Я могу",url:"https://www.transbaltik.ru/uploads/pricelists/jamogu040526.xlsx",date:"2026-05-04",size:"18.41KB"},
+  {name:"МИФ",url:"https://www.transbaltik.ru/uploads/pricelists/mif290526.xlsx",date:"2026-05-29",size:"643.64KB"},
+];
+
+// Remove duplicates
+const seen = new Set();
+const UNIQUE_PL = PRICELISTS.filter(p => {
+  if (seen.has(p.url)) return false;
+  seen.add(p.url); return true;
+});
+
+// ============================================================
+// STATE
+// ============================================================
+let plSortKey = 'name';
+let plSortAsc = true;
+let bookData = []; // [{col1, col2, ...}]
+let bookHeaders = [];
+let bookSource = '';
+let bookQuery = '';
+let activeTab = 'pricelists';
+let currentLoadingUrl = null;
+let currentLoadingName = '';
+
+// ============================================================
+// TABS
+// ============================================================
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    t.classList.toggle('active', ['pricelists','book-search','upload'][i] === tab);
+  });
+  document.querySelectorAll('.panel').forEach((p,i) => {
+    p.classList.toggle('active', ['tab-pricelists','tab-book-search','tab-upload'][i] === 'tab-'+tab);
+  });
+}
+
+// ============================================================
+// PRICELISTS
+// ============================================================
+function getExt(url) {
+  return url.split('.').pop().toUpperCase().replace('XLSX','XLSX').replace('XLS','XLS').replace('DOCX','DOCX');
+}
+
+function isFresh(dateStr) {
+  const d = new Date(dateStr);
+  const now = new Date('2026-05-29');
+  return (now - d) < 3 * 24 * 3600 * 1000;
+}
+
+function filterPricelists() {
+  const q = document.getElementById('pl-search').value.toLowerCase();
+  const sort = document.getElementById('pl-sort').value;
+  let items = UNIQUE_PL.filter(p => p.name.toLowerCase().includes(q));
+  items.sort((a,b) => {
+    if (sort === 'name') return a.name.localeCompare(b.name, 'ru');
+    if (sort === 'date') return b.date.localeCompare(a.date);
+    return 0;
+  });
+  renderPricelists(items);
+  document.getElementById('pl-count').textContent = items.length;
+}
+
+function sortPricelists(key) {
+  if (plSortKey === key) plSortAsc = !plSortAsc;
+  else { plSortKey = key; plSortAsc = true; }
+  document.getElementById('pl-sort').value = key === 'date' ? 'date' : 'name';
+  filterPricelists();
+}
+
+function renderPricelists(items) {
+  const tbody = document.getElementById('pl-tbody');
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="icon">🔎</div><p>Ничего не найдено</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = items.map(p => `
+    <tr>
+      <td class="publisher-name">
+        ${p.special ? '<span class="special">АКЦИЯ</span>' : ''}
+        ${escHtml(p.name)}
+      </td>
+      <td class="date-cell ${isFresh(p.date) ? 'fresh' : ''}">${p.date}</td>
+      <td class="size-cell">${p.size}</td>
+      <td class="date-cell">${getExt(p.url)}</td>
+      <td><div class="actions-cell">
+        <a class="btn-dl" href="${p.url}" download target="_blank">↓ Скачать</a>
+        <button class="btn-parse" onclick="loadPricelist('${p.url}','${escJs(p.name)}')">▶ Открыть</button>
+      </div></td>
+    </tr>
+  `).join('');
+}
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escJs(s) { return s.replace(/'/g,"\\'"); }
+
+// ============================================================
+// LOAD & PARSE EXCEL
+// ============================================================
+async function loadPricelist(url, name) {
+  currentLoadingUrl = url;
+  currentLoadingName = name;
+  switchTab('book-search');
+  document.getElementById('book-search-empty').style.display = 'none';
+  document.getElementById('book-search-ui').style.display = 'none';
+
+  // Show loading inline
+  const ui = document.getElementById('book-search-ui');
+  ui.style.display = 'block';
+  ui.innerHTML = `<div class="loading-bar"><div class="spinner"></div><p>Загружаем прайс: ${escHtml(name)}...</p></div>`;
+
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const ab = await resp.arrayBuffer();
+    parseExcel(ab, name);
+  } catch(e) {
+    ui.innerHTML = `
+      <div class="info-box" style="border-left-color:var(--red)">
+        <h3 style="color:var(--red)">Ошибка загрузки</h3>
+        <p>Не удалось загрузить файл автоматически — возможно, сервер блокирует прямые запросы из браузера (CORS).</p>
+        <p style="margin-top:8px"><strong style="color:var(--text)">Решение:</strong> скачайте файл вручную и используйте вкладку «Загрузить файл».</p>
+        <p style="margin-top:12px">
+          <a class="btn-dl" href="${url}" download target="_blank" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none">↓ Скачать ${escHtml(name)}</a>
+          &nbsp;&nbsp;
+          <button class="btn-parse" onclick="switchTab('upload')">📁 Перейти к загрузке</button>
+        </p>
+      </div>`;
+  }
+}
+
+function parseExcel(arrayBuffer, name) {
+  try {
+    const wb = XLSX.read(arrayBuffer, {type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    if (!rows.length) { showNoData(name); return; }
+
+    // Find header row (first row with most non-empty cells)
+    let headerRow = 0;
+    let maxFilled = 0;
+    for (let i = 0; i < Math.min(10, rows.length); i++) {
+      const filled = rows[i].filter(c => c !== '' && c !== null && c !== undefined).length;
+      if (filled > maxFilled) { maxFilled = filled; headerRow = i; }
+    }
+
+    bookHeaders = rows[headerRow].map((h,i) => h ? String(h).trim() : `Столбец_${i+1}`);
+    bookData = rows.slice(headerRow + 1)
+      .filter(r => r.some(c => c !== '' && c !== null && c !== undefined))
+      .map(r => {
+        const obj = {};
+        bookHeaders.forEach((h,i) => { obj[h] = r[i] !== undefined ? String(r[i]) : ''; });
+        return obj;
+      });
+
+    bookSource = name;
+    renderBookSearch();
+  } catch(e) {
+    document.getElementById('book-search-ui').innerHTML = `
+      <div class="info-box" style="border-left-color:var(--red)">
+        <h3 style="color:var(--red)">Ошибка чтения файла</h3>
+        <p>${escHtml(e.message)}</p>
+      </div>`;
+  }
+}
+
+function showNoData(name) {
+  document.getElementById('book-search-ui').innerHTML = `
+    <div class="info-box" style="border-left-color:var(--red)">
+      <h3>Нет данных</h3><p>Файл «${escHtml(name)}» пустой или не удалось прочитать.</p>
+    </div>`;
+}
+
+function renderBookSearch() {
+  const ui = document.getElementById('book-search-ui');
+  ui.style.display = 'block';
+
+  // Build col filter options
+  const colOpts = bookHeaders.map(h => `<option value="${escHtml(h)}">${escHtml(h)}</option>`).join('');
+
+  ui.innerHTML = `
+    <div class="book-panel-header">
+      <button class="back-btn" onclick="switchTab('pricelists')">← Назад</button>
+      <h2>${escHtml(bookSource)}</h2>
+    </div>
+    <div class="source-info">
+      <strong>${bookData.length}</strong> строк · <strong>${bookHeaders.length}</strong> столбцов ·
+      Столбцы: ${bookHeaders.slice(0,8).map(h=>`<em>${escHtml(h)}</em>`).join(', ')}${bookHeaders.length>8?'…':''}
+    </div>
+    <div class="book-search-row">
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="bs-query" placeholder="Введите название, автора, ISBN, серию..." oninput="searchBooks()" autofocus>
+      </div>
+      <select class="filter-select" id="bs-col-filter" onchange="searchBooks()">
+        <option value="">Все столбцы</option>
+        ${colOpts}
+      </select>
+    </div>
+    <div class="rows-info" id="bs-rows-info">Введите запрос для поиска, или оставьте пустым — покажем первые 50 строк</div>
+    <div id="bs-results"></div>
+  `;
+
+  searchBooks();
+}
+
+function searchBooks() {
+  const q = (document.getElementById('bs-query')?.value || '').toLowerCase().trim();
+  const col = document.getElementById('bs-col-filter')?.value || '';
+  const info = document.getElementById('bs-rows-info');
+  const results = document.getElementById('bs-results');
+  if (!bookData.length) return;
+
+  let filtered;
+  if (!q) {
+    filtered = bookData.slice(0, 50);
+  } else {
+    filtered = bookData.filter(row => {
+      if (col) return (row[col] || '').toLowerCase().includes(q);
+      return Object.values(row).some(v => v.toLowerCase().includes(q));
+    });
+  }
+
+  if (info) info.textContent = q
+    ? `Найдено: ${filtered.length} из ${bookData.length} строк`
+    : `Показаны первые 50 из ${bookData.length} строк`;
+
+  if (!filtered.length) {
+    results.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>Ничего не найдено по запросу «'+escHtml(q)+'»</p></div>';
+    return;
+  }
+
+  // Find likely price / name / author columns
+  const priceCols = bookHeaders.filter(h => /цен|price|руб|стоим/i.test(h));
+  const nameCols = bookHeaders.filter(h => /назв|title|наим|книг|товар/i.test(h));
+  const authorCols = bookHeaders.filter(h => /автор|author/i.test(h));
+  const isbnCols = bookHeaders.filter(h => /isbn|арт|код/i.test(h));
+  const otherCols = bookHeaders.filter(h => !priceCols.includes(h) && !nameCols.includes(h) && !authorCols.includes(h) && !isbnCols.includes(h));
+
+  const displayRows = filtered.slice(0, 100);
+  results.innerHTML = `<div class="books-grid">${displayRows.map(row => {
+    const title = nameCols.map(c=>row[c]).filter(Boolean).join(' · ') || Object.values(row).find(v=>v.length>5) || '—';
+    const author = authorCols.map(c=>row[c]).filter(Boolean).join(', ');
+    const price = priceCols.map(c=>row[c]).filter(Boolean).join(' / ');
+    const isbn = isbnCols.map(c=>row[c]).filter(Boolean).join(' ');
+    const extra = otherCols.slice(0,5).filter(c=>row[c]).map(c=>`<span>📌 ${escHtml(c)}: ${escHtml(row[c])}</span>`).join('');
+    return `<div class="book-card">
+      <div class="book-title">${escHtml(title)}</div>
+      <div class="book-meta">
+        ${author ? `<span>✍️ ${escHtml(author)}</span>` : ''}
+        ${isbn ? `<span>🔢 ${escHtml(isbn)}</span>` : ''}
+        ${extra}
+      </div>
+      ${price ? `<div class="book-price">${escHtml(price)} ₽</div>` : ''}
+    </div>`;
+  }).join('')}</div>
+  ${filtered.length > 100 ? `<p style="text-align:center;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);margin-top:16px">Показано 100 из ${filtered.length}. Уточните запрос.</p>` : ''}`;
+}
+
+// ============================================================
+// FILE UPLOAD
+// ============================================================
+function handleFileInput(e) {
+  const file = e.target.files[0];
+  if (file) processFile(file);
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) processFile(file);
+}
+
+function processFile(file) {
+  document.getElementById('upload-loading').style.display = 'block';
+  document.getElementById('upload-zone').style.display = 'none';
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    document.getElementById('upload-loading').style.display = 'none';
+    document.getElementById('upload-zone').style.display = 'block';
+    parseExcel(e.target.result, file.name);
+    switchTab('book-search');
+    document.getElementById('book-search-ui').style.display = 'block';
+    document.getElementById('book-search-empty').style.display = 'none';
+  };
+  reader.onerror = () => {
+    document.getElementById('upload-loading').style.display = 'none';
+    document.getElementById('upload-zone').style.display = 'block';
+    alert('Ошибка чтения файла');
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+filterPricelists();
+</script>
+</body>
+</html>
